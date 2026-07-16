@@ -16,5 +16,6 @@ Gene expression profiles and clinical traits of GSE141910 were downloaded from t
 R software (R 4.3.3)
 
 ### Outputs:
-![Alt text for screen readers]([images/output.png](https://github.com/mostafahassaneinn/Predicting_cell_type_composition_from_RNA_seq/blob/main/output/all_pie.png))
+
+![Alt text for screen readers](https://github.com/mostafahassaneinn/Predicting_cell_type_composition_from_RNA_seq/blob/main/output/all_pie.png)
 
