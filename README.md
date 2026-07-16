@@ -17,7 +17,7 @@ R software (R 4.3.3)
 
 ### Outputs
 
-#### Pie charts for the 4 subgroups illustrate the differences in immune cell abundances. 
+### Pie charts for the 4 subgroups illustrate the differences in immune cell abundances. 
 In this figure, immune cells that had 0% or 1% in abundance were removed for better representation of the main cells. 
 **The abundance infiltration analysis of the four subgroups illustrated differences in the abundance of immune cells within these four subgroups**
 ![Alt text for screen readers](https://github.com/mostafahassaneinn/Predicting_cell_type_composition_from_RNA_seq/blob/main/output/all_pie.png)
