@@ -15,23 +15,39 @@ Gene expression profiles and clinical traits of GSE141910 were downloaded from t
 ### Used Tools
 R software (R 4.3.3)
 
-### Outputs
+### Methods
 
-### Pie charts for the 4 subgroups illustrate the differences in immune cell abundances. 
+#### Immune infiltration analyses 
+The Immune Cell Abundance Identifier (ImmuCellAI) is a tool that provides a prediction for the ratio of 24 immune cell types based on gene expression data
+#### Hierarchical clustering 
+A clustering technique using Ward’s method seeks to subgroup the DCM patients group to achieve maximum homogeneity in each subgroup and the greatest differences between subgroups using the Euclidean distance. 
+Identification of DEGs 
+#### Identification of DEGs 
+The R package “limma” was applied to identify DEGs between each subgroup of DCM and the control group.
+#### Enrichment analyses of DEGs 
+The R package “clusterProfiler” was used to perform Gene Ontology analysis to investigate the biological functions of DEGs
+
+### Results
+
+#### Pie charts for the 4 subgroups illustrate the differences in immune cell abundances. 
 In this figure, immune cells that had 0% or 1% in abundance were removed for better representation of the main cells. 
 **The abundance infiltration analysis of the four subgroups illustrated differences in the abundance of immune cells within these four subgroups**
+
 ![Alt text for screen readers](https://github.com/mostafahassaneinn/Predicting_cell_type_composition_from_RNA_seq/blob/main/output/all_pie.png)
 
-### Boxplot of DCM immune cell ratio showed 8 types of immune cells had high abundance in all the subgroups more than other immune cells. 
+#### Boxplot of DCM immune cell ratio showed 8 types of immune cells had high abundance in all the subgroups more than other immune cells. 
 **All these 8 types have a significant difference within each type except the CD4_T and DC cells. The abundance of 10 types of cells (neutrophils, monocytes, NK, Gamma delta, B Cell, DC, CD8_T, NKT, CD4_T, and macrophages) is higher than the other immune cells. Additionally, there was a significant difference within the 10 types except the CD4_T and DC**
+
 ![Alt text for screen readers](https://github.com/mostafahassaneinn/Predicting_cell_type_composition_from_RNA_seq/blob/main/output/DCM%20immune%20cell%20ratio_boxplot.png)
 
-### Boxplots and violin plots features showed the adjusted p.value for significant changes after pairwise test between subgroups within each of the eight types of immune cells.
+#### Boxplots and violin plots features showed the adjusted p.value for significant changes after pairwise test between subgroups within each of the eight types of immune cells.
 **Pairwise comparisons between any two subgroups were needed to determine the significance of differences between subgroups within each cell type. Although 8 different immune cell types out of 10 abundant types have significant differences between subgroups, CD8_T cells are the only cells that have significant differences between all subgroups.**
+
 ![Alt text for screen readers](https://github.com/mostafahassaneinn/Predicting_cell_type_composition_from_RNA_seq/blob/main/output/all_individual_boxes.png)
 
-### GO biological processes enrichment dot plots showed the immunological processes in all subgroups. In addition, some processes were enriched in some of the subgroups.
+#### GO biological processes enrichment dot plots showed the immunological processes in all subgroups. In addition, some processes were enriched in some of the subgroups.
 **The DEGs between each subgroup and control revealed that these genes played a significant role in lymphocyte differentiation, extracellular matrix (ECM) organization, phagocytosis, and other immunological processes**
+
 ![Alt text for screen readers](https://github.com/mostafahassaneinn/Predicting_cell_type_composition_from_RNA_seq/blob/main/output/GO_BP_new.png)
 
 ### Conclusion
