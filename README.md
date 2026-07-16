@@ -52,3 +52,5 @@ In this figure, immune cells that had 0% or 1% in abundance were removed for bet
 
 ### Conclusion
 *In conclusion, this study showed that 4 distinct subtypes of DCM can be estimated from the differences in the abundance of immune cells based on transcriptome data. Eight types of cells out of ten are significantly different in the abundant cells of the DCM patients, and CD8_T cells can be used as a biomarker to differentiate between all DCM subgroups. Additionally, phagocytosis, neutrophil migration, tissue remodelling, and ECM organisation are differentially enriched in the DCM subgroups.*
+
+For source code support, please contact [m.hassanein@mumc.nl](mailto:m.hassanein@mumc.nl).
