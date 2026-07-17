@@ -1,0 +1,289 @@
+---
+title: "Deconvolution_Bulk_RNA-seq"
+author: "Mostafa Hassanein"
+date: "2026-07-15"
+output: html_document
+---
+*This script © 2026, by Mostafa Hassanein, is licensed under CC BY 4.0*
+*To view a copy of this license, visit https://creativecommons.org/licenses/by/4.0/*
+
+# INSTALL & LOAD LIBRARIES
+```{r}
+# Package installation checks
+needed_cran <- c("devtools", "BiocManager", "rstatix", "ggpubr", "ggstatsplot", "RColorBrewer", "tidyverse", "pheatmap", "kableExtra", "rmarkdown", "VennDiagram", "limma", "gridExtra")
+needed_bioc <- c("GSVA", "clusterProfiler", "org.Hs.eg.db", "AnnotationDbi", "enrichplot", "pcaMethods")
+
+# Install missing CRAN packages
+new_cran <- setdiff(needed_cran, rownames(installed.packages()))
+if (length(new_cran)) install.packages(new_cran)
+
+# Install missing Bioconductor packages
+new_bioc <- setdiff(needed_bioc, rownames(installed.packages()))
+if (length(new_bioc)) BiocManager::install(new_bioc, update = FALSE, ask = FALSE)
+
+if (!require("ImmuCellAI", quietly = TRUE)) devtools::install_github("lydiaMyr/ImmuCellAI@main")
+
+# Load all required libraries
+all_libraries <- c(needed_cran, needed_bioc, "ImmuCellAI")
+invisible(lapply(all_libraries, library, character.only = TRUE))
+
+# Set Working Directory
+setwd(getwd())
+```
+# DATA IMPORT & PRE-PROCESSING
+```{r}
+# Read expression data (CPM) and sample metadata
+gxData <- read.delim("MAGNET_GeneExpressionData_CPM_19112020.txt", as.is = TRUE, row.names = 1)
+sampleInfo <- read.csv("MAGNET_SampleData_18112022.csv", as.is = TRUE, row.names = 1)
+
+# Import exon lengths to perform CPM to FPKM conversion
+geneTotExonLengths <- read.delim("MAGNET_exonLengths.txt", as.is = TRUE, row.names = 1)
+stopifnot(all(rownames(geneTotExonLengths) == rownames(gxData))) # Safety check
+
+# Convert CPM to FPKM
+cpm2fpkm <- function(x) {
+  geneTotExonLengths_kb <- geneTotExonLengths[, 1] / 1E3
+  return(2^(x) / geneTotExonLengths_kb)
+}
+gxData_fpkm <- cpm2fpkm(gxData)
+```
+# Selecting DCM COHORT & ANNOTATION
+```{r}
+# Extract DCM cohort samples
+DCMIds <- rownames(sampleInfo)[sampleInfo$etiology == "DCM"]
+gxData_DCM <- gxData_fpkm[, DCMIds]
+
+# Read BioMart annotations  (Already in the provided file)
+gene_symbolss <- read.table(file = "biomart_ann.txt", header = TRUE)
+rownames(gene_symbolss) <- gene_symbolss[, 1]
+
+# Merge expression data with HGNC symbols and clean up missing rows
+merged_data <- merge(gene_symbolss, gxData_DCM, by = 0, all.x = TRUE)[, -(1:2)]
+data_filtered <- subset(merged_data, !is.na(merged_data[, 1]) & merged_data[, 1] != "")
+
+# Resolve duplicated gene symbols by averaging expression values
+duplicated_genes <- c("BMS1P4", "DNAJC9-AS1", "GUSBP11", "GUSBP5", "LINC00484", "Y_RNA")
+original_data <- data_filtered[!data_filtered$external_gene_name %in% duplicated_genes, ]
+subset_data <- data_filtered[data_filtered$external_gene_name %in% duplicated_genes, ]
+
+averaged_data <- aggregate(. ~ external_gene_name, data = subset_data, FUN = mean)
+averaged_data <- averaged_data[, match(colnames(original_data), colnames(averaged_data))]
+
+# Finalize clean expression matrix
+data_filtered_new <- rbind(original_data, averaged_data)
+rownames(data_filtered_new) <- data_filtered_new[, 1]
+data_filtered_new <- data_filtered_new[, -1]
+```
+# IMMUNE CELL DECONVOLUTION & PCA
+```{r}
+gsva <- function(expr, gset.idx.list, method = "gsva", ...) {
+  args <- list(...)
+  
+  # 1. Map 'ssgsea.norm' to the new 'normalize' argument
+  if ("ssgsea.norm" %in% names(args)) {
+    args[["normalize"]] <- args[["ssgsea.norm"]]
+    args[["ssgsea.norm"]] <- NULL
+  }
+  
+  # 2. Extract and handle 'parallel.sz' if present
+  bpparam_val <- BiocParallel::SerialParam() # Default to serial processing
+  if ("parallel.sz" %in% names(args)) {
+    cores <- as.integer(args[["parallel.sz"]])
+    if (cores > 1) {
+      bpparam_val <- BiocParallel::MulticoreParam(workers = cores)
+    }
+    args[["parallel.sz"]] <- NULL # Remove to prevent "unused argument" error
+  }
+  
+  # 3. Build the appropriate parameter object
+  if (method == "ssgsea") {
+    # Combine the main inputs with the cleaned, remaining arguments
+    param_args <- c(list(exprData = expr, geneSets = gset.idx.list), args)
+    param <- do.call(GSVA::ssgseaParam, param_args)
+  } else {
+    param_args <- c(list(exprData = expr, geneSets = gset.idx.list), args)
+    param <- do.call(GSVA::gsvaParam, param_args)
+  }
+  
+  # 4. Run GSVA with the correct parameter object and parallel backend
+  GSVA::gsva(param, BPPARAM = bpparam_val)
+}
+``` 
+
+```{r}
+# Run deconvolution analysis
+abundance_all <- ImmuCellAI_new(data_filtered_new, data_type = "rnaseq", group_tag = 0, response_tag = 0)
+abundance <- abundance_all[["Sample_abundance"]]
+
+# Prepare metadata for PCA plotting
+new_sampleInfo_DCM <- sampleInfo[DCMIds, "gender", drop = FALSE]
+pcaRes <- pca(abundance, nPcs = 10)
+stopifnot(all(rownames(pcaRes@scores) == rownames(new_sampleInfo_DCM)))
+
+# Plot and save PCA to check for sex-specific bias
+plotData <- cbind(data.frame(pcaRes@scores), new_sampleInfo_DCM)
+png("PCA_result.png", width = 5, height = 5, unit = "in", res = 800)
+ggplot(plotData, aes(x = PC1, y = PC2, col = gender)) + 
+  geom_point() + labs(title = "PCA of DCM patients")
+dev.off()
+```
+## HIERARCHICAL CLUSTERING & SUBGROUPS
+```{r}
+# Hierarchical clustering using Ward's linkage
+dist_matrix <- dist(abundance, method = "euclidean")
+hclust_result <- hclust(dist_matrix, method = "ward.D2")
+
+# Plot and save dendrogram with subgroup threshold line
+png("hclust_result.png", width = 18, height = 8, unit = "in", res = 800)
+plot(hclust_result, labels = FALSE,main = "Hierarchical Clustering Dendrogram")
+abline(h = 0.45, lty = 2)
+dev.off()
+
+# Define and clean subgroup factor levels
+sub_groups <- cutree(hclust_result, h = 0.45) %>% 
+  as.factor() %>% 
+  fct_recode("subgroup_1" = "1", "subgroup_2" = "2", "subgroup_3" = "3", "subgroup_4" = "4")
+
+DCM_groups <- data.frame(sub_groups)
+
+# Format abundance profile data for visualization
+abundance_groups <- merge(DCM_groups, abundance, by = 0, all.x = TRUE) %>% 
+  column_to_rownames("Row.names")
+long_format <- gather(abundance_groups[, 1:(ncol(abundance_groups)-1)], category, cells_abundance, -sub_groups)
+
+# Plot overall immune cell abundance by patient subgroups
+png("DCM immune cell ratio_boxplot.png", width = 18, height = 10, unit = "in", res = 1600)
+ggplot(long_format, aes(x = reorder(category, -cells_abundance), y = cells_abundance, fill = sub_groups)) +
+  geom_boxplot() + xlab("") + ylab("DCM immune cell ratio") +
+  theme(axis.text.y = element_text(size = 15, face = "bold"),
+        axis.text.x = element_text(size = 15, angle = 25, face = "bold"),
+        legend.text = element_text(size = 15), legend.title = element_text(size = 20),
+        legend.position = "right", axis.title = element_text(size = 20))
+dev.off()
+```
+## VISUALIZATION: PIES & BOXPLOTS
+```{r}
+# Function: Generate Pie Charts for subgroups
+make_subgroup_pie <- function(sub_id) {
+  df <- long_format %>% 
+    filter(sub_groups == sub_id) %>% 
+    group_by(category) %>% 
+    summarise(cells_abundance = sum(cells_abundance), .groups = "drop") %>% 
+    mutate(Percent = paste0(round((cells_abundance/sum(cells_abundance)*100), 0), "%")) %>% 
+    filter(!Percent %in% c("0%", "1%"))
+  
+  ggpie(df, "cells_abundance", label = "category", fill = "Percent",
+        color = "white", palette = "jco", lab.pos = "in", lab.adjust = 0.1, 
+        lab.font = c(5, "bold", "white")) +
+    labs(title = sub_id) +
+    theme(legend.position = "right", legend.text = element_text(size = 15),  
+          legend.title = element_text(size = 20),
+          plot.title = element_text(size = 15, face = "bold", vjust = -10))
+}
+
+# Generate and combine all subgroup pie charts
+pies <- lapply(paste0("subgroup_", 1:4), make_subgroup_pie)
+png("all_pie.png", width = 18, height = 15, unit = "in", res = 500)
+ggarrange(plotlist = pies, ncol = 2, nrow = 2)
+dev.off()
+```
+## Function: Generate comparative boxplots with stats for specific cell types
+```{r}
+make_stat_box <- function(cell_type) {
+  df <- filter(long_format, category == cell_type)
+  ggbetweenstats(
+    data = df, x = sub_groups, y = cells_abundance,
+    type = "nonparametric", p.adjust.method = "BH",
+    pairwise.display = "significant"
+  ) + ylab("Cells abundance") + xlab(paste("DCM subgroups for", cell_type)) +
+    theme_classic() + theme(legend.position = "none")
+}
+
+# Generate and save boxplots for selected immune cell populations
+target_cells <- c("Gamma_delta", "Neutrophil", "CD8_T", "NK", "NKT", "Macrophage", "Monocyte", "Bcell")
+box_plots <- lapply(target_cells, make_stat_box)
+
+png("all_individual_boxes.png", width = 12, height = 20, unit = "in", res = 800)
+ggarrange(plotlist = box_plots, ncol = 2, nrow = 4)
+dev.off()
+```
+# DIFFERENTIAL GENE EXPRESSION (DGE) WITH LIMMA
+```{r}
+# Isolate control cohort profiles
+controlIds <- rownames(sampleInfo)[sampleInfo$etiology == "NF"]
+gxData_control <- gxData[, controlIds]
+
+# Organize subgroup designations for alignment
+DCM_groups_raw <- cutree(hclust_result, h = 0.45)
+sampleInfo_groups <- merge(data.frame(sub_groups = DCM_groups_raw), sampleInfo, by = 0, all.x = TRUE) %>% 
+  column_to_rownames("Row.names")
+
+# Prepare control group annotations
+sampleInfo.t <- t(sampleInfo)
+control_info <- sampleInfo.t[, controlIds]
+# Loop through subgroups to construct datasets and run limma DGE analysis
+dge_results <- list()
+for (i in 1:4) {
+  # 1. Align expression profiles
+  sub_expr <- t(t(gxData)[rownames(sampleInfo_groups)[sampleInfo_groups$sub_groups == i], ])
+  comb_expr <- bind_cols(as.data.frame(sub_expr), gxData_control)
+  
+  # 2. Align experimental sample metadata
+  sub_info <- t(sampleInfo_groups[sampleInfo_groups$sub_groups == i, -1])
+  comb_info <- as.data.frame(t(bind_cols(as.data.frame(sub_info), as.data.frame(control_info))))
+  
+  # 3. Model design and Contrast matrices
+  design <- model.matrix(~ 0 + etiology, data = comb_info)
+  fit <- lmFit(comb_expr, design)
+  cont_matrix <- makeContrasts(subgroupvscontrol = etiologyDCM - etiologyNF, levels = design)
+  
+  # 4. Fit and Bayesian Shrinkage
+  fit2 <- contrasts.fit(fit, cont_matrix)
+  ebfit <- eBayes(fit2, trend = TRUE)
+  
+  # Store parsed output
+  dge_results[[i]] <- topTable(ebfit, coef = "subgroupvscontrol", number = nrow(comb_expr))
+}
+
+# Assign names to subgroup outputs
+names(dge_results) <- paste0("subgroup", 1:4)
+
+# Parse significant Differentially Expressed Genes (DEGs) for downstream profiling
+get_degs <- function(res, direction = "both") {
+  if (direction == "up") {
+    rows <- res[res$adj.P.Val < 0.05 & res$logFC > 0.6, ]
+  } else if (direction == "down") {
+    rows <- res[res$adj.P.Val < 0.05 & res$logFC < -0.6, ]
+  } else {
+    rows <- res[res$adj.P.Val < 0.05 & abs(res$logFC) > 0.6, ]
+  }
+  return(data.frame(Symbol = rownames(rows), rows))
+}
+
+deg_all  <- lapply(dge_results, get_degs, direction = "both")
+deg_ups  <- lapply(dge_results, get_degs, direction = "up")
+deg_downs <- lapply(dge_results, get_degs, direction = "down")
+```
+# FUNCTIONAL ENRICHMENT ANALYSIS (GO)
+```{r}
+# Run Gene Ontology Biological Process Enrichment
+run_enrichment <- function(deg_df, ontology = "BP") {
+  enrichGO(gene = deg_df$Symbol, OrgDb = org.Hs.eg.db, keyType = 'ENSEMBL',
+           ont = ontology, pAdjustMethod = "BH", pvalueCutoff = 0.01, qvalueCutoff = 0.05)
+}
+
+# GO Enrichment loops for both BP (Biological Process) and CC (Cellular Component)
+go_bp_list <- lapply(deg_all, run_enrichment, ontology = "BP")
+go_cc_list <- lapply(deg_all, run_enrichment, ontology = "CC")
+
+# Generate comparative BP & CC dot plots
+dotplots_bp <- lapply(1:4, function(i) dotplot(go_bp_list[[i]], showCategory = 20) + ggtitle(paste0("subgroup", i, " BP")))
+dotplots_cc <- lapply(1:4, function(i) dotplot(go_cc_list[[i]], showCategory = 20) + ggtitle(paste0("subgroup", i, " CC")))
+
+# Save combined multi-panel figures
+png_bp <- grid.arrange(grobs = dotplots_bp, ncol = 2)
+ggsave("GO_BP_new.png", png_bp, width = 30, height = 45, units = "cm")
+
+png_cc <- grid.arrange(grobs = dotplots_cc, ncol = 2)
+ggsave("GO_CC_new.png", png_cc, width = 65, height = 30, units = "cm")
+```
