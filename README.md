@@ -5,7 +5,7 @@
 Dilated cardiomyopathy (DCM) is defined as dilation dysfunction associated with biventricular or left ventricular systolic without coronary artery disease. DCM can lead to heart failure (HF) and cardiac transplantation. Moreover, immune responses are common 
 features of many DCMs
 
-### Rational
+### Rationale
 Immune cell populations are heterogeneous in DCM patients. Using a precise tool to estimate immune cell abundance from transcriptome data will enable to cluster of the  DCM into subtypes driven by differences in immune cell infiltration. Therefore, after those subtypes are identified, differential expression gene analyses (DEGs) for each of those subtypes are compared with the control group. This will show the biological 
 processes in each of the DCM subtypes using Gene Ontology analysis. 
 
